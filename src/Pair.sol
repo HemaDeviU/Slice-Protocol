@@ -18,6 +18,7 @@ contract Pair {
 
     LpToken public immutable lpToken;
     ISlice public immutable slice;
+    uint256 public closeTimestamp;
 
     event Add(uint256 baseTokenAmount,uint256 fractionalTokenAmount,uint256 lpTokenAmount);
 
@@ -105,41 +106,74 @@ emit Add(baseTokenAmount, fractionalTokenAmount, lpTokenAmount);
     }
 
  //nft amm
-    function nftAdd()
+
+    function nftAdd(uint256 baseTokenAmount,uint256[] calldata tokenIds,uint256 minLpTokenAmount,bytes32[][] calldata proofs) public payable returns (uint256) {
+        uint256 fractionalTokenAmount = wrap(tokenIds, proofs);
+        uint256 lpTokenAmount = add(baseTokenAmount,fractionalTokenAmount,minLpTokenAmount);
+
+        return lpTokenAmount;
+    }
+    function nftRemove(uint256 lpTokenAmount,uint256 minBaseTokenOutputAmount,uint256[] calldata tokenIds)public returns (uint256 baseTokenOutputAmount,uint256 fractionalTokenOutputAmount)
     {
+        (baseTokenOutputAmount, fractionalTokenOutputAmount) = remove(lpTokenAmount,minBaseTokenOutputAmount,tokenIds.length * ONE);
+        unwrap(tokenIds);
+        return (baseTokenOutputAmount, fractionalTokenOutputAmount);
 
     }
-    function nftRemove()
-    {
+    function nftBuy(uint256[] calldata tokenIds,uint256 maxInputAmount) public payable returns (uint256 inputAmount) {
+        inputAmount = buy(tokenIds.length * ONE, maxInputAmount);
+        unwrap(tokenIds);
 
+        return inputAmount;
     }
-    function nftBuy()
-    {
-
-    }
-    function nftSell()
-    {
-
+    function nftSell(uint256[] calldata tokenIds,uint256 minOutputAmount,bytes32[][] calldata proofs) public returns (uint256) {
+        uint256 inputAmount = wrap(tokenIds, proofs); // fractionalTokenAmount
+        uint256 outputAmount = sell(inputAmount, minOutputAmount);
+        return outputAmount;
     }
     //wraps
-    function wrap()
-    {
-
+    function wrap(uint256[] calldata tokenIds,bytes32[][] calldata proofs) public returns (uint256 fractionalTokenAmount) {
+        _validateTokenIds(tokenIds, proofs);
+        require(closeTimestamp == 0, "Wrap: closed");
+        fractionalTokenAmount = tokenIds.length * ONE;
+        _mint(msg.sender, fractionalTokenAmount);
+        for (uint256 i = 0; i < tokenIds.length; i++) {
+            ERC721(nft).safeTransferFrom(msg.sender,address(this),tokenIds[i]);
+        }
+        emit Wrap(tokenIds);
     }
-    function unwrap()
-    {
+    function unwrap(uint256[] calldata tokenIds) public returns (uint256) {
+        uint256 fractionalTokenAmount = tokenIds.length * ONE;
+        _burn(msg.sender, fractionalTokenAmount);
 
-    }
-    function _transferFrom()
-    {
+        for (uint256 i = 0; i < tokenIds.length; i++) {
+            ERC721(nft).safeTransferFrom(address(this),msg.sender,tokenIds[i]
+            );
+        }
 
+        emit Unwrap(tokenIds);
+
+        return fractionalTokenAmount;
     }
+  
     //defender
     function exit() public
     {
+        require(slice.owner()==msg.sender,"Close:not owner");
+        closeTimestamp = block.timestamp + 1 days;
+        slice.destroy(nft, baseToken, merkleRoot);
+        emit Close(closeTimestamp);
+    }
+    function withdraw(uint256 tokenId) public {
+        require(slice.owner() == msg.sender,"withdraw:not owner");
+        require(closeTimestamp!=0,"Withdraw not initiated");
+        require(block.timestamp >= closeTimestamp, "Not withdrawable yet");
+        ERC721(nft).safeTransferFrom(address(this), msg.sender, tokenId);
 
+        emit Withdraw(tokenId);
     }
     //getters
+    
     function price(){}
     function baseTokenReserves(){}
     function fractionalTokenReserves(){}
