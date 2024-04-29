@@ -7,7 +7,7 @@ import "solmate/utils/SafeTransferLib.sol";
 import "solmate/utils/MerkleProofLib.sol";
 import "openzeppelin/utils/cryptography/MerkleProof.sol";
 import "./LpToken.sol";
-impoty "./interfaces/ISlice.sol";
+import "./interfaces/ISlice.sol";
 
 contract Pair {
     using SafeTransferLib for address;
