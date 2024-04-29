@@ -3,13 +3,16 @@ pragma solidity 0.8.23;
 
 import "./Pair.sol";
 import "solmate/auth/Owned.sol";
-import "solidity-lib/contracts/libraries/SafeERC20Namer.sol";
+import "libr/SafeERC20Namer.sol";
 //to create and trade fraction nfts
 contract Slice  is Owned{
     using SafeERC20Namer for address;
     //pairs[nft][baseToken][merkleRoot] => pair
     mapping(address => mapping(address => mapping(bytes32 => address)))
     public pairs;
+    event Create(address indexed nft, address indexed baseToken,bytes32 indexed merkleRoot);
+    event Destroy(address indexed nft,address indexed baseToken,bytes32 indexed merkleRoot);
+
 
     constructor() Owned(msg.sender){}
 
@@ -26,11 +29,13 @@ string memory pairSymbol = string.concat(nftSymbol,":",baseTokenSymbol);
 pair = new Pair(nft,baseToken, merkleRoot,pairSymbol,nftName,nftSymbol);
 
 pairs[nft][baseToken][merkleRoot] = address(pair);
+emit Create(nft, baseToken, merkleRoot);
 
     }
     function destroy(address nft, address baseToken,bytes32 merkleRoot) public {
         require(msg.sender ==pairs[nft][baseToken][merkleRoot],"Only pair can destro itself");
         delete pairs[nft][baseToken][merkleRoot];
+        emit Destroy(nft,baseToken,merkleRoot);
     }
-    }
+    
 }
