@@ -155,7 +155,24 @@ emit Add(baseTokenAmount, fractionalTokenAmount, lpTokenAmount);
 
         return fractionalTokenAmount;
     }
-  
+  function _transferFrom(address from,address to,uint256 amount) internal returns (bool) {
+        balanceOf[from] -= amount;
+        // cannot overflow because the sum of all user
+        // balances cannot exceed the max uint256 value.
+        unchecked {
+            balanceOf[to] += amount;
+        }
+        emit Transfer(from, to, amount);
+        return true;
+    }
+
+    function _validateTokenIds(uint256[] calldata tokenIds,bytes32[][] calldata proofs) internal view {
+        if (merkleRoot == bytes23(0)) return;
+        for (uint256 i = 0; i < tokenIds.length; i++) {
+            bool isValid = MerkleProofLib.verify(proofs[i],merkleRoot,keccak256(abi.encodePacked(tokenIds[i])));
+            require(isValid, "Invalid merkle proof");
+        }
+    }
     //defender
     function exit() public
     {
@@ -173,10 +190,44 @@ emit Add(baseTokenAmount, fractionalTokenAmount, lpTokenAmount);
         emit Withdraw(tokenId);
     }
     //getters
-    
-    function price(){}
-    function baseTokenReserves(){}
-    function fractionalTokenReserves(){}
-     
 
-}
+    function price() public view returns (uint256) {
+        return (_baseTokenReserves() * ONE)/fractionalTokenReserves();
+    }
+     function baseTokenReserves() public view returns (uint256) {
+        return _baseTokenReserves();
+    }
+    function fractionalTokenReserves(public view returns (uint256) {
+        return balanceOf[address(this)];
+    }
+    function _baseTokenReserves() internal view returns (uint256) {
+        return baseToken == address(0)? address(this).balance - msg.value : ERC20(baseToken).balanceOf(address(this));
+    }
+    function buyQuote(uint256 outputAmount) public view returns (uint256) {
+        return (outputAmount * 1000 * baseTokenReserves()) / ((fractionalTokenReserves() - outputAmount) * 997);
+    }
+    function sellQuote(uint256 inputAmount) public view returns (uint256) {
+        uint256 inputAmountWithFee = inputAmount * 997;
+        return(inputAmountWithFee * baseTokenReserves()) /((fractionalTokenReserves() * 1000) + inputAmountWithFee);
+    }
+    function addQuote(uint256 baseTokenAmount,uint256 fractionalTokenAmount) public view returns (uint256) {
+        uint256 lpTokenSupply = lpToken.totalSupply();
+        if (lpTokenSupply > 0) {
+            uint256 baseTokenShare = (baseTokenAmount * lpTokenSupply) /baseTokenReserves();
+            uint256 fractionalTokenShare = (fractionalTokenAmount *lpTokenSupply) / fractionalTokenReserves();
+            return Math.min(baseTokenShare, fractionalTokenShare);
+        } else {
+            // if there is no liquidity then init
+            return Math.sqrt(baseTokenAmount * fractionalTokenAmount);
+        }
+    }
+    function removeQuote( uint256 lpTokenAmount) public view returns (uint256, uint256) {
+        uint256 lpTokenSupply = lpToken.totalSupply();
+        uint256 baseTokenOutputAmount = (baseTokenReserves() * lpTokenAmount) /lpTokenSupply;
+        uint256 fractionalTokenOutputAmount = (fractionalTokenReserves() *lpTokenAmount) / lpTokenSupply;
+
+        return (baseTokenOutputAmount, fractionalTokenOutputAmount);
+    }
+
+
+
